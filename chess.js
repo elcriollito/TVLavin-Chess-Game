@@ -44,6 +44,12 @@ function initGame() {
     selectedSquare = null;
     gameOver = false;
     capturedPieces = { white: [], black: [] };
+
+    enPassantTarget = null;
+lastMove = null;
+initEngineOnce();
+
+    
     renderBoard();
     updateTurnIndicator();
     updateCapturedPieces();
@@ -125,6 +131,11 @@ function handleSquareClick(row, col) {
             
             currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
             updateTurnIndicator();
+            // If it's now black's turn, ask Stockfish to play
+if (!gameOver && currentPlayer === 'black') {
+    requestEngineMove();
+}
+
         } else {
             // Select a new piece if it's the current player's
             if (piece && piece.color === currentPlayer) {
@@ -217,6 +228,29 @@ function getPawnMoves(row, col, color) {
             moves.push({ row: newRow, col: newCol });
         }
     }
+
+        // --- En Passant ---
+    // If opponent last move was a double pawn push and ended adjacent to this pawn,
+    // this pawn may capture to the enPassantTarget square on the very next move.
+    if (enPassantTarget && lastMove && lastMove.wasDoublePawnPush) {
+        // Our pawn must be on the same row as the opponent pawn after it moved,
+        // and adjacent by file.
+        // Opponent pawn final square:
+        const oppToRow = lastMove.toRow;
+        const oppToCol = lastMove.toCol;
+
+        if (oppToRow === row && Math.abs(oppToCol - col) === 1) {
+            // Our capture destination must be one step diagonally forward into enPassantTarget
+            for (let dc of [-1, 1]) {
+                const newRow = row + direction;
+                const newCol = col + dc;
+                if (newRow === enPassantTarget.row && newCol === enPassantTarget.col) {
+                    moves.push({ row: newRow, col: newCol });
+                }
+            }
+        }
+    }
+
     
     return moves;
 }
