@@ -25,6 +25,18 @@ let selectedSquare = null;
 let gameOver = false;
 let capturedPieces = { white: [], black: [] };
 
+// --- Engine (Stockfish) state ---
+let engine = null;
+let engineReady = false;
+let engineThinking = false;
+const ENGINE_PATH = 'engine/stockfish.js'; // cambia si tu archivo se llama distinto
+const ENGINE_DEPTH = 12;
+
+// --- En Passant state ---
+let enPassantTarget = null; // { row, col } casilla destino (ej: g6)
+let lastMove = null; // { fromRow, fromCol, toRow, toCol, piece, wasDoublePawnPush }
+
+
 // Initialize the game
 function initGame() {
     board = createInitialBoard();
@@ -440,6 +452,126 @@ function updateCapturedPieces() {
     capturedBlack.innerHTML = capturedPieces.black
         .map(type => pieces.black[type]).join(' ');
 }
+
+// ========== STOCKFISH ENGINE INTEGRATION ==========
+
+function initEngineOnce() {
+    if (engine) return;
+
+    engine = new Worker(ENGINE_PATH);
+
+    engine.onmessage = (e) => {
+        const line = (e.data || '').toString();
+
+        if (line.includes('uciok')) {
+            engine.postMessage('isready');
+        }
+        if (line.includes('readyok')) {
+            engineReady = true;
+        }
+
+        if (line.startsWith('bestmove')) {
+            engineThinking = false;
+            const parts = line.split(' ');
+            const move = parts[1]; // e2e4, g7g5, e7e8q, etc.
+            if (move && move !== '(none)') {
+                playEngineMoveUCI(move);
+            }
+        }
+    };
+
+    engine.postMessage('uci');
+}
+
+function requestEngineMove() {
+    if (!engine || !engineReady) return;
+    engineThinking = true;
+
+    const fen = boardToFEN();
+    engine.postMessage(`position fen ${fen}`);
+    engine.postMessage(`go depth ${ENGINE_DEPTH}`);
+}
+
+function playEngineMoveUCI(uci) {
+    // Engine is black in our setup
+    if (gameOver) return;
+    if (currentPlayer !== 'black') return;
+
+    const from = algToCoords(uci.slice(0, 2));
+    const to = algToCoords(uci.slice(2, 4));
+
+    // Validate move exists in our rules (important)
+    const validMoves = getValidMoves(from.row, from.col);
+    const ok = validMoves.some(m => m.row === to.row && m.col === to.col);
+    if (!ok) {
+        // If mismatch, just stop thinking so player isn't stuck
+        engineThinking = false;
+        return;
+    }
+
+    movePiece(from.row, from.col, to.row, to.col);
+    clearHighlights();
+
+    // Keep your original messaging logic style:
+    if (isCheckmate(currentPlayer)) {
+        gameOver = true;
+        document.getElementById('status-message').textContent =
+            `Checkmate! ${currentPlayer === 'white' ? 'Black' : 'White'} wins!`;
+    } else if (isCheck(currentPlayer)) {
+        document.getElementById('status-message').textContent =
+            `${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)} is in check!`;
+    } else {
+        document.getElementById('status-message').textContent = '';
+    }
+
+    currentPlayer = 'white';
+    updateTurnIndicator();
+}
+
+// ---------- FEN helpers ----------
+function boardToFEN() {
+    const map = {
+        white: { king: 'K', queen: 'Q', rook: 'R', bishop: 'B', knight: 'N', pawn: 'P' },
+        black: { king: 'k', queen: 'q', rook: 'r', bishop: 'b', knight: 'n', pawn: 'p' }
+    };
+
+    let fen = '';
+    for (let row = 0; row < 8; row++) {
+        let empty = 0;
+        for (let col = 0; col < 8; col++) {
+            const p = board[row][col];
+            if (!p) empty++;
+            else {
+                if (empty) { fen += empty; empty = 0; }
+                fen += map[p.color][p.type];
+            }
+        }
+        if (empty) fen += empty;
+        if (row !== 7) fen += '/';
+    }
+
+    const side = currentPlayer === 'white' ? 'w' : 'b';
+    const castling = '-'; // (tu juego aún no implementa castling)
+    const ep = enPassantTarget ? coordsToAlg(enPassantTarget.row, enPassantTarget.col) : '-';
+    const halfmove = '0';
+    const fullmove = '1';
+
+    return `${fen} ${side} ${castling} ${ep} ${halfmove} ${fullmove}`;
+}
+
+function coordsToAlg(row, col) {
+    const file = String.fromCharCode(97 + col); // a-h
+    const rank = (8 - row).toString();          // 8-1
+    return file + rank;
+}
+
+function algToCoords(sq) {
+    const col = sq.charCodeAt(0) - 97;   // a-h -> 0-7
+    const rank = parseInt(sq[1], 10);    // 1-8
+    const row = 8 - rank;
+    return { row, col };
+}
+
 
 // Event listeners
 document.getElementById('reset-btn').addEventListener('click', initGame);
