@@ -1,3 +1,6 @@
+## 🎮 Live Demo
+👉 https://elcriollito.github.io/TVLavin-Chess-Game/
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://elcriollito.github.io/TVLavin-Chess-Game/)
 # Chess Game
 
 A fully functional chess game built with vanilla JavaScript, HTML, and CSS. Play chess in your browser with a clean, modern interface.
