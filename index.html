@@ -29,5 +29,36 @@
         </div>
     </div>
     <script src="chess.js"></script>
+    <script>
+  // 1) Creamos el worker (el “motor” corriendo aparte)
+  const sfWorker = new Worker("./engine/stockfish-worker.js");
+
+  // 2) Aquí escuchamos TODO lo que Stockfish diga (texto UCI)
+  sfWorker.onmessage = (e) => {
+    const line = String(e.data || "").trim();
+    if (!line) return;
+
+    console.log("[SF]", line);
+
+    // Guardamos el último "bestmove" cuando aparezca
+    if (line.startsWith("bestmove")) {
+      window.__SF_BESTMOVE__ = line; // ej: "bestmove e2e4 ponder e7e5"
+    }
+  };
+
+  // 3) Función helper para enviar comandos UCI al motor
+  function sfSend(cmd) {
+    sfWorker.postMessage(cmd);
+  }
+
+  // 4) Handshake inicial: le decimos "uci" e "isready"
+  sfSend("uci");
+  sfSend("isready");
+
+  // (opcional) deja accesible en consola por si quieres probar a mano:
+  window.sfSend = sfSend;
+  window.sfWorker = sfWorker;
+</script>
+
 </body>
 </html>
